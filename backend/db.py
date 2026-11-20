@@ -232,6 +232,9 @@ def init_db():
                                    ('tax_receipt', 'INTEGER')):                 # in the receipts' PDF: 1 yes, 0 no, NULL = proposed                       # tax return: a kind, 'none', NULL = proposed
             if column not in {r[1] for r in conn.execute('PRAGMA table_info(documents)')}:
                 conn.execute(f'ALTER TABLE documents ADD COLUMN {column} {definition}')
+        # email import: answer the sender with the outcome (1, the default) or not (0)
+        if 'mail_reply' not in {r[1] for r in conn.execute('PRAGMA table_info(users)')}:
+            conn.execute('ALTER TABLE users ADD COLUMN mail_reply INTEGER NOT NULL DEFAULT 1')
         # the tax code of a person: the receipts' sheets for the CAF are one per 730
         if 'tax_code' not in {r[1] for r in conn.execute('PRAGMA table_info(people)')}:
             conn.execute('ALTER TABLE people ADD COLUMN tax_code TEXT')

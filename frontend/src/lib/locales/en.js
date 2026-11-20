@@ -301,6 +301,7 @@ export default {
   "mail.not_configured": "The address is set but reading the mailbox is not configured on the server.",
   "mail.off": "Import by email is not active on this server yet.",
   "mail.off_admin": "Not active yet: set PELICAN_INBOX_ADDRESS and PELICAN_IMAP_* in the server's .env file (see README).",
+  "mail.reply": "Answer me with the outcome after each imported email",
   "mail.senders": "From which addresses",
   "mail.senders_explain": "Emails are accepted only from these addresses (others are ignored). Add your work email, for example.",
   "mail.title": "Import by email",

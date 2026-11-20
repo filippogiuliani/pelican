@@ -89,6 +89,10 @@
 
   // --- Email import: addresses I forward from
   let newSender = $state('');
+  async function setMailReply(on) {
+    try { await put('/account/mail-reply', { on }); family.mail_reply = on; toast(t('common.saved')); }
+    catch (e) { showError(e); }
+  }
   async function addSender(e) {
     e.preventDefault();
     if (await run(() => post('/account/mail-senders', { email: newSender.trim() }), t('common.saved'))) newSender = '';
@@ -326,6 +330,10 @@
       {/if}
     {:else}
       <p class="small muted">{admin ? t('mail.off_admin') : t('mail.off')}</p>
+    {/if}
+    {#if family.inbox.address}
+      <label class="check small"><input type="checkbox" checked={family.mail_reply} onchange={(e) => setMailReply(e.currentTarget.checked)} />
+        {t('mail.reply')}</label>
     {/if}
     <h3 class="sub">{t('mail.senders')}</h3>
     <p class="tiny muted">{t('mail.senders_explain')}</p>

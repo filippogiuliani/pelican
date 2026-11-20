@@ -1,4 +1,5 @@
 """Import by email: who may send, what becomes a document, the summary sent back."""
+import pytest
 import mailin
 from conftest import ok, run_queue
 from samples import email_with, pdf_with_text
@@ -134,3 +135,73 @@ def test_mailbox_errors_are_visible(family, monkeypatch):
     monkeypatch.setattr(mailin.imaplib, 'IMAP4_SSL', refuse)
     mailin.check_mailbox()
     assert 'connection refused' in ok(family.c.get('/api/family'))['inbox']['last_error']
+
+
+class FoldersIMAP(FakeIMAP):
+    """FakeIMAP with folders: LIST, CREATE, COPY into one of them."""
+
+    def __init__(self, messages, folders, delim='.'):
+        super().__init__(messages)
+        self.folders, self.delim, self.copied, self.created = list(folders), delim, [], []
+
+    def list(self):
+        return 'OK', [f'(\\HasNoChildren) "{self.delim}" "{f}"'.encode() for f in self.folders]
+
+    def create(self, name):
+        name = name.strip('"')
+        if not name.startswith('INBOX' + self.delim):
+            return 'NO', [b'folders go under INBOX']
+        self.folders.append(name); self.created.append(name)
+        return 'OK', []
+
+    def subscribe(self, name):
+        return 'OK', []
+
+    def expunge(self):
+        return 'OK', []
+
+    def uid(self, cmd, *args):
+        if cmd == 'COPY':
+            folder = args[1].strip('"')
+            if folder not in self.folders:
+                return 'NO', [b'no such mailbox']
+            self.copied.append((args[0], folder))
+            return 'OK', []
+        return super().uid(cmd, *args)
+
+
+@pytest.mark.parametrize('folders, expected, created', [
+    (['INBOX', 'Archived'], 'Archived', []),                      # another case
+    (['INBOX', 'INBOX.ARCHIVED'], 'INBOX.ARCHIVED', []),          # under INBOX (Aruba, Courier…)
+    (['INBOX'], 'INBOX.ARCHIVED', ['INBOX.ARCHIVED']),            # missing: created where the server wants it
+])
+def test_handled_messages_go_to_the_done_folder(family, monkeypatch, folders, expected, created):
+    fake = FoldersIMAP({b'7': email_with([pdf()])}, folders)
+    monkeypatch.setattr(mailin.imaplib, 'IMAP4_SSL', fake)
+    monkeypatch.setattr(mailin, 'HOST', 'imap.example.com')
+    monkeypatch.setattr(mailin, 'DONE_FOLDER', 'ARCHIVED')
+    mailin.check_mailbox()
+    assert fake.copied == [(b'7', expected)] and fake.created == created and mailin._status['last_error'] is None
+
+
+def test_a_move_that_fails_is_visible(family, monkeypatch):
+    fake = FoldersIMAP({b'7': email_with([pdf()])}, ['INBOX'], delim='/')
+    fake.create = lambda name: ('NO', [b'not allowed'])
+    monkeypatch.setattr(mailin.imaplib, 'IMAP4_SSL', fake)
+    monkeypatch.setattr(mailin, 'HOST', 'imap.example.com')
+    monkeypatch.setattr(mailin, 'DONE_FOLDER', 'ARCHIVED')
+    mailin.check_mailbox()
+    assert 'ARCHIVED' in ok(family.c.get('/api/family'))['inbox']['last_error']
+    assert fake.seen == {b'7'}                                    # imported all the same
+
+
+def test_the_answer_can_be_turned_off(family, outbox):
+    f = family
+    outbox.clear()                                                      # the sign-up confirmation
+    assert ok(f.c.get('/api/family'))['mail_reply'] is True
+    ok(f.c.put('/api/account/mail-reply', json={'on': False}))
+    assert ok(f.c.get('/api/family'))['mail_reply'] is False
+    mailin.handle_message(email_with([pdf()]))
+    run_queue()
+    assert ok(f.c.get('/api/documents'))['total'] == 1 and not outbox      # imported, nobody answered
+    assert f.c.put('/api/account/mail-reply', json={'on': 'no'}).status_code == 400

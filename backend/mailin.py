@@ -157,9 +157,11 @@ def send_summary(batch):
         if not rows or not rows[0]['email_from']:
             return
         claimed = conn.execute("UPDATE imports SET batch = 'sent:' || batch WHERE batch = ?", (batch,)).rowcount
-        u = conn.execute('SELECT language FROM users WHERE id = ?', (rows[0]['user_id'],)).fetchone()
+        u = conn.execute('SELECT language, mail_reply FROM users WHERE id = ?', (rows[0]['user_id'],)).fetchone()
     if not claimed:
         return  # already sent
+    if u and not u['mail_reply']:
+        return  # they chose not to get an answer (Family → Email)
     lang = u['language'] if u else i18n.DEFAULT
     lines = []
     for r in rows:
@@ -179,6 +181,48 @@ def send_summary(batch):
 
 # ---------- IMAP ----------
 
+def _mailbox_names(box):
+    """[(name, delimiter)] of every folder, from LIST."""
+    typ, data = box.list()
+    out = []
+    for line in data or []:
+        if not isinstance(line, bytes):
+            continue
+        m = re.match(rb'\((?P<flags>[^)]*)\) (?P<delim>"[^"]*"|NIL) (?P<name>.+)$', line)
+        if m:
+            name = m.group('name').decode('utf-8', 'replace').strip()
+            if name.startswith('"') and name.endswith('"'):
+                name = name[1:-1].replace('\\"', '"').replace('\\\\', '\\')
+            delim = m.group('delim').decode().strip('"') if m.group('delim') != b'NIL' else ''
+            out.append((name, delim))
+    return out
+
+
+def resolve_folder(box, wanted):
+    """The folder to move handled messages to, as the server names it: 'ARCHIVED' may be 'Archived' or
+    'INBOX.ARCHIVED' (servers that keep every folder under INBOX). Created when there is none. None = unusable."""
+    names = _mailbox_names(box)
+    delim = next((d for _, d in names if d), '.')
+    for candidate in (wanted, f'INBOX{delim}{wanted}'):
+        for name, _ in names:
+            if name == candidate:
+                return name
+        for name, _ in names:
+            if name.lower() == candidate.lower():
+                return name
+    # not there: create it, at the top level or under INBOX if the server wants that
+    for candidate in (wanted, f'INBOX{delim}{wanted}'):
+        if box.create(_quote(candidate))[0] == 'OK':
+            box.subscribe(_quote(candidate))
+            print(f'[mailin] folder {candidate} created', flush=True)
+            return candidate
+    return None
+
+
+def _quote(name):
+    return '"' + name.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
 def check_mailbox():
     """Read the unread messages once. Errors are kept in the status shown on the Family page."""
     _status['last_check'] = datetime.datetime.now().isoformat(timespec='seconds')
@@ -191,6 +235,10 @@ def check_mailbox():
             typ, _ = box.select(FOLDER)
             if typ != 'OK':
                 raise RuntimeError(f'folder {FOLDER} not found')
+            done = resolve_folder(box, DONE_FOLDER) if DONE_FOLDER else None
+            moved_error = None
+            if DONE_FOLDER and not done:
+                moved_error = f'folder {DONE_FOLDER} not found and cannot be created'
             typ, data = box.uid('SEARCH', None, 'UNSEEN')
             for uid in (data[0] or b'').split():
                 typ, parts = box.uid('FETCH', uid, '(BODY.PEEK[])')
@@ -205,11 +253,16 @@ def check_mailbox():
                     _status['last_error'] = 'message_failed'
                     continue
                 box.uid('STORE', uid, '+FLAGS', '(\\Seen)')
-                if DONE_FOLDER:
-                    if box.uid('COPY', uid, DONE_FOLDER)[0] == 'OK':
+                if done:
+                    typ, resp = box.uid('COPY', uid, _quote(done))
+                    if typ == 'OK':
                         box.uid('STORE', uid, '+FLAGS', '(\\Deleted)')
-            if DONE_FOLDER:
+                    else:
+                        moved_error = f'cannot move to {done}: {(resp or [b""])[0]!r}'[:200]
+            if done:
                 box.expunge()
+            if moved_error:
+                raise RuntimeError(moved_error)   # the messages were imported: only the move failed, shown on Family
         finally:
             try:
                 box.logout()

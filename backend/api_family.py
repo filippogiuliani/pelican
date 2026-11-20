@@ -21,10 +21,11 @@ def family():
                                                     WHERE m.family_id = ? ORDER BY m.created_at''', (g.family_id,))]
         people = db.people(conn, g.family_id)
         senders = [r[0] for r in conn.execute('SELECT email FROM mail_senders WHERE user_id = ? ORDER BY email', (g.user['id'],))]
+        mail_reply = bool(conn.execute('SELECT mail_reply FROM users WHERE id = ?', (g.user['id'],)).fetchone()[0])
     for m in members:
         m['me'] = m['id'] == g.user['id']
     import mailin
-    return jsonify(**dict(f), members=members, people=people, role=g.role, mail_senders=senders,
+    return jsonify(**dict(f), members=members, people=people, role=g.role, mail_senders=senders, mail_reply=mail_reply,
                    inbox=mailin.status(), backup=backup_status())
 
 
@@ -216,6 +217,17 @@ def add_sender():
             abort(400, 'Too many addresses')
         conn.execute('INSERT INTO mail_senders (user_id, email) VALUES (?, ?)', (g.user['id'], email))
     return jsonify(ok=True), 201
+
+
+@bp.put('/account/mail-reply')
+def set_mail_reply():
+    """{on}: after an import by email, answer me with the outcome of every file (on by default)."""
+    on = body().get('on')
+    if not isinstance(on, bool):
+        abort(400, 'on: true or false')
+    with db.transaction() as conn:
+        conn.execute('UPDATE users SET mail_reply = ? WHERE id = ?', (int(on), g.user['id']))
+    return jsonify(ok=True, mail_reply=on)
 
 
 @bp.delete('/account/mail-senders/<path:email>')
