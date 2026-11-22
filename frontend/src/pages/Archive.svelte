@@ -194,11 +194,12 @@
   .docs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line);
     border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
   .docs li + li { border-top: 1px solid var(--line); }
+  /* a computer: as many columns as fit (two on a laptop, more on a wide screen); each document draws its right and
+     bottom line, the outer ones go under the frame */
   @media (min-width: 1400px) {
-    .docs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
     .docs li + li { border-top: 0; }
-    .docs li { border-bottom: 1px solid var(--line); margin-bottom: -1px; }
-    .docs li:nth-child(odd) { border-right: 1px solid var(--line); }
+    .docs li { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; }
   }
   .doc { display: flex; gap: 12px; padding: 12px 14px; text-decoration: none; color: inherit; }
   .doc:hover { background: var(--surface-2); }
