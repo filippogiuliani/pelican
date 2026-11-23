@@ -174,6 +174,7 @@ export default {
   "doc.tax_auto": "Automatico: {kind}",
   "doc.tax_not": "non serve",
   "source.kooka": "Da Kooka",
+  "source.quokka": "Da Quokka",
   "tax.kind.medical": "Spese sanitarie",
   "tax.kind.school": "Scuola e asilo nido",
   "tax.kind.mortgage": "Interessi del mutuo",

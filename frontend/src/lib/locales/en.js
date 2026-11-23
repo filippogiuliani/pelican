@@ -174,6 +174,7 @@ export default {
   "doc.tax_auto": "Automatic: {kind}",
   "doc.tax_not": "not needed",
   "source.kooka": "From Kooka",
+  "source.quokka": "From Quokka",
   "tax.kind.medical": "Medical expenses",
   "tax.kind.school": "School and nursery",
   "tax.kind.mortgage": "Mortgage interest",

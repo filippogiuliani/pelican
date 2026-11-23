@@ -293,3 +293,23 @@ def test_documents_from_kooka_and_plans_for_wallaby(client, wombat, monkeypatch)
     got = ok(plans())
     assert [p['id'] for p in got] == [plan] and 'zucchine' in got[0]['excerpt'] and got[0]['url'].endswith(f'/doc/{plan}')
     assert ok(plans(child=100)) == [] and plans(level='limited').status_code == 403
+
+
+def test_an_email_from_quokka(client, wombat):
+    import base64
+    from conftest import run_queue
+    c = _hub_family(client, wombat)
+    H = {'Authorization': 'Bearer ' + KEY}
+    pdf = pdf_with_text(['Bolletta luce novembre'])
+    post = lambda level='full', **extra: client().post(f'/api/hub/families/1/imports?user=10&level={level}', headers=H,  # noqa: E731
+                                                        json={'file_name': 'bolletta.pdf', 'content': base64.b64encode(pdf).decode(),
+                                                              'title': 'Bolletta luce', 'category': 'home', **extra})
+    assert post(level='').status_code == 403 and post(content='%%%').status_code == 400
+    r = ok(post(), 201)
+    assert r['status'] == 'queued' and not r['duplicate_of']
+    run_queue()
+    docs = ok(c.get('/api/documents'))
+    assert docs['total'] == 1
+    d = ok(c.get(f"/api/documents/{docs['items'][0]['id']}"))
+    assert (d['title'], d['category'], d['origin']['source']) == ('Bolletta luce', 'home', 'quokka')
+    assert ok(post(), 201)['status'] == 'duplicate'

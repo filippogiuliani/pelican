@@ -195,6 +195,24 @@ def from_kooka():
     return jsonify(id=doc_id, url=doc_url(doc_id), duplicate=bool(row['duplicate_of'])), 201
 
 
+@hub.service('/imports', methods=['POST'])
+def from_quokka():
+    """Quokka: an email or one of its attachments, {file_name, content (base64), title} → {id, status, document_id,
+    duplicate_of}: into the import queue like an upload, made by the person who asked."""
+    _can_read()
+    d = request.get_json(silent=True) or {}
+    try:
+        data = base64.b64decode(d.get('content') or '', validate=True)
+    except (binascii.Error, ValueError):
+        abort(400, 'Invalid file')
+    with db.transaction() as conn:
+        iid = imports.intake(conn, g.family_id, g.user['id'], 'quokka', d.get('file_name'), data, title=d.get('title'),
+                             category=d.get('category') if d.get('category') in db.CATEGORIES else None)
+        row = conn.execute('SELECT id, status, error, document_id, duplicate_of FROM imports WHERE id = ?', (iid,)).fetchone()
+    imports.wake()
+    return jsonify(dict(row)), 201
+
+
 @hub.service('/plans')
 def plans_for_wallaby():
     """Wallaby: the documents marked as the paediatrician's plan for a child (?child=<Wombat person id>), newest first."""

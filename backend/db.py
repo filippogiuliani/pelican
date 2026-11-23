@@ -19,7 +19,7 @@ ROLES = ['admin', 'member']
 DOC_STATUSES = ['processing', 'ready', 'review']
 # queued → processing → done | error; duplicate = same file already in the archive (nothing was stored)
 IMPORT_STATUSES = ['queued', 'processing', 'done', 'error', 'duplicate']
-IMPORT_SOURCES = ['upload', 'scan', 'shortcut', 'email', 'api', 'kooka']
+IMPORT_SOURCES = ['upload', 'scan', 'shortcut', 'email', 'api', 'kooka', 'quokka']
 TRASH_DAYS = 30
 
 SCHEMA = '''
